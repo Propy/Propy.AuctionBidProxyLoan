@@ -31,8 +31,8 @@ At the end of the auction, if a lender won the auction, the proxy contract wins 
 
 ### Generate Merkle Root (merkleGen)
 
-This repo includes a Hardhat task to generate a Merkle Root for a provided set of voting power data:
+This repo includes a Hardhat task to generate a Merkle Root for a provided set of loan allowance data:
 
-`npx hardhat merkleGen --merkle-data example.json`
+`npx hardhat merkleGen --merkle-data example-eth-values.json`
 
-Replace `example.json` with the name of the file in the `merkle-data` folder that you wish to generate the Merkle Root for
+Replace `example-eth-values.json` with the name of the file in the `merkle-data` folder that you wish to generate the Merkle Root for
