@@ -1,0 +1,26 @@
+{
+  "name": "Propy.AuctionBidProxyLoan",
+  "version": "0.0.1",
+  "description": "A set of contracts to enable loan providers to grant bidders a loan allowance for bidding in Propy auctions.",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.0.6",
+    "@nomiclabs/hardhat-etherscan": "^3.1.0",
+    "@nomiclabs/hardhat-waffle": "^2.0.3",
+    "@openzeppelin/contracts": "^4.8.2",
+    "@openzeppelin/contracts-upgradeable": "^4.8.2",
+    "chai": "^4.3.6",
+    "dotenv": "^16.0.1",
+    "ethereum-waffle": "^4.0.10",
+    "ethers": "^5.6.9",
+    "hardhat": "^2.9.9",
+    "hardhat-contract-sizer": "^2.6.1",
+    "hardhat-gas-reporter": "^1.0.8",
+    "solidity-coverage": "^0.8.2"
+  },
+  "dependencies": {
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.9",
+    "@nomicfoundation/hardhat-verify": "^2.0.3",
+    "bignumber.js": "^9.1.2",
+    "merkletreejs": "^0.2.32"
+  }
+}
