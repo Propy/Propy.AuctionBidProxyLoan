@@ -20,6 +20,8 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
   event NFTForwardedToWinner(address indexed nft, uint256 indexed nftId, address indexed winner);
   event TokensRecovered(address token, address to, uint value);
   event ETHRecovered(address to, uint value);
+  event ETHBidWithdrawnFromAuction(uint value);
+  event ERC20BidWithdrawnFromAuction(uint value);
 
   struct AuctionConfig {
     IERC20 biddingTokenERC20;
@@ -32,7 +34,6 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
   }
 
   bytes32 public constant MAINTAINER_ROLE = keccak256('MAINTAINER_ROLE'); // 0x339759585899103d2ace64958e37e18ccb0504652c81d4a1b8aa80fe2126ab95
-  bytes32 public constant ADMIN_ROLE = keccak256('ADMIN_ROLE'); // 0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775
 
   bool public initialized;
   IClonableMerkleProofMinimal public merkleProofContract;
@@ -68,8 +69,8 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     if(_biddingTokenERC20Address != address(0)) {
       _biddingToken.approve(_auctionDestination, type(uint256).max);
     }
-    _setupRole(ADMIN_ROLE, _adminAddress);
-    _setupRole(MAINTAINER_ROLE, _adminAddress);
+    _grantRole(DEFAULT_ADMIN_ROLE, _adminAddress);
+    _grantRole(MAINTAINER_ROLE, _adminAddress);
     _grantRole(MAINTAINER_ROLE, _maintainerAddress);
     initialized = true;
   }
@@ -120,14 +121,9 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     return this.onERC721Received.selector;
   }
 
-  modifier onlyAdmin() {
-    require(hasRole(ADMIN_ROLE, msg.sender), "NOT_ADMIN");
-    _;
-  }
-
   function forwardNftToWinner(
     address _winner
-  ) external onlyAdmin nonReentrant {
+  ) external onlyMaintainer nonReentrant {
     require(_winner != address(0), "Invalid recipient address");
     
     auctionConfig.nft.safeTransferFrom(address(this), _winner, auctionConfig.nftId);
@@ -135,17 +131,33 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     emit NFTForwardedToWinner(address(auctionConfig.nft), auctionConfig.nftId, _winner);
   }
 
-  function recoverTokens(IERC20 _token, address _destination, uint _amount) external onlyAdmin {
+  function recoverTokens(IERC20 _token, address _destination, uint _amount) external onlyMaintainer nonReentrant {
     require(_destination != address(0), 'NO_ZERO_ADDRESS');
     _token.transfer(_destination, _amount);
     emit TokensRecovered(address(_token), _destination, _amount);
   }
 
-  function recoverETH(address _destination, uint _amount) external onlyAdmin {
+  function recoverETH(address _destination, uint _amount) external onlyMaintainer nonReentrant {
     require(_destination != address(0), 'NO_ZERO_ADDRESS');
     (bool sent, ) = _destination.call{value: _amount}("");
     require(sent, "ETH_SEND_FAILED");
     emit ETHRecovered(_destination, _amount);
+  }
+
+  function withdrawBidFromAuction() external onlyMaintainer {
+    if(address(auctionConfig.biddingTokenERC20) != address(0)) {
+      // ERC20 BIDDING
+      IPropyAuctionV2ERC20 _auctionContract = IPropyAuctionV2ERC20(auctionConfig.destination);
+      uint256 _withdrawAmount = _auctionContract.unclaimed(address(this));
+      _auctionContract.withdraw();
+      emit ERC20BidWithdrawnFromAuction(_withdrawAmount);
+    } else {
+      // ETH BIDDING
+      IPropyAuctionV2 _auctionContract = IPropyAuctionV2(auctionConfig.destination);
+      uint256 _withdrawAmount = _auctionContract.unclaimed(address(this));
+      _auctionContract.withdraw();
+      emit ETHBidWithdrawnFromAuction(_withdrawAmount);
+    }
   }
 
   modifier onlyMaintainer() {
