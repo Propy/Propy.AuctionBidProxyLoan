@@ -14,7 +14,7 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
 
   let clonableAuctionBidProxyLoanReference, clonableMerkleProofMinimalReference, mockWhitelist, mockRWA, mockPRO, propyAuctionV2, propyAuctionV2ERC20;
 
-  let deployerSigner, sellerSigner, adminSigner, maintainerSigner, standardBidder1Signer, standardBidder2Signer, proxyBidder1Signer, proxyBidder2Signer, bidder3SignerNoWhitelist;
+  let deployerSigner, sellerSigner, adminSigner, maintainerSigner, standardBidder1Signer, standardBidder2Signer, proxyBidder1Signer, proxyBidder2Signer, bidder3SignerNoWhitelist, recoveredFundsAddress;
 
   let loanPowerERC20 = {};
   let loanPowerETH = {};
@@ -52,6 +52,7 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
       proxyBidder2Signer,
       bidder3SignerNoWhitelist,
       sellerSigner,
+      recoveredFundsAddress,
     ] = await hre.ethers.getSigners();
 
     console.log({
@@ -299,6 +300,62 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
           let currentOwner = await mockRWA.ownerOf(ethAuctionNftId);
           await expect(currentOwner).to.equal(bidProxyETH.address);
         });
+        it("Should allow the bidProxy contract to withdraw ETH from the auction contract when a normal bidder wins", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerETH[proxyBidder1Signer.address]} ETH`);
+          let merkleProofAddress1 = await merkleTreeGenerateProof(loanPowerETH, proxyBidder1Signer.address, loanPowerETH[proxyBidder1Signer.address]);
+          console.log({merkleProofAddress1});
+          await expect(
+            bidProxyETH.connect(proxyBidder1Signer).proxyBid(merkleProofAddress1, proxyBidder1Signer.address, loanPowerETH[proxyBidder1Signer.address], minBidEth)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          await expect(
+            propyAuctionV2.connect(standardBidder1Signer).bid(mockRWA.address, ethAuctionNftId, auctionStartTime, {value: BigNumber(minBidEth).plus(100).toString()})
+          ).to.emit(propyAuctionV2, "Bid");
+          let merkleProofAddress2 = await merkleTreeGenerateProof(loanPowerETH, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address]);
+          console.log({merkleProofAddress2});
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofAddress2, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address], increasedBid)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          await expect(
+            propyAuctionV2.connect(standardBidder2Signer).bid(mockRWA.address, ethAuctionNftId, auctionStartTime, {value: BigNumber(increasedBid).plus(100).toString()})
+          ).to.emit(propyAuctionV2, "Bid");
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofAddress2, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address], BigNumber(increasedBid).plus(200).toString())
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          await expect(
+            propyAuctionV2.connect(standardBidder2Signer).bid(mockRWA.address, ethAuctionNftId, auctionStartTime, {value: BigNumber(increasedBid).plus(300).toString()})
+          ).to.emit(propyAuctionV2, "Bid");
+          await time.setNextBlockTimestamp(auctionEndTime + 1);
+          // function finalize(
+          //   IERC721 _nft,
+          //   uint _nftId,
+          //   uint32 _start,
+          //   address _winner,
+          //   address[] memory _payoutAddresses,
+          //   uint256[] memory _payoutAddressValues
+          // ) external onlyRole(FINALIZE_ROLE) {
+          let winningBid = await propyAuctionV2.getBid(mockRWA.address, ethAuctionNftId, auctionStartTime, standardBidder2Signer.address);
+          await expect(
+            propyAuctionV2.finalize(mockRWA.address, ethAuctionNftId, auctionStartTime, standardBidder2Signer.address, [sellerSigner.address], [winningBid.toString()])
+          ).to.emit(propyAuctionV2, "Finalized");
+          let currentOwner = await mockRWA.ownerOf(ethAuctionNftId);
+          await expect(currentOwner).to.equal(standardBidder2Signer.address);
+          // Ensure that BidProxy can withdraw funds from auction contract
+          let proxyBidAmount = await propyAuctionV2.getBid(mockRWA.address, ethAuctionNftId, auctionStartTime, bidProxyETH.address);
+          let bidProxyBalanceBeforeClaim = await bidProxyETH.provider.getBalance(bidProxyETH.address);
+          await expect(
+            bidProxyETH.connect(maintainerSigner).claimAndWithdrawBidFromAuction()
+          ).to.emit(bidProxyETH, "ETHBidClaimedAndWithdrawnFromAuction");
+          let bidProxyBalanceAfterClaim = await bidProxyETH.provider.getBalance(bidProxyETH.address);
+          await expect(bidProxyBalanceAfterClaim.toString()).to.equal(bidProxyBalanceBeforeClaim.add(proxyBidAmount).toString());
+          // Ensure that maintainer can recover the ETH from the bidProxy contract
+          let recoverFundsAddressBeforeRecovery = await bidProxyETH.provider.getBalance(recoveredFundsAddress.address);
+          await expect(
+            bidProxyETH.connect(maintainerSigner).recoverETH(recoveredFundsAddress.address, bidProxyBalanceAfterClaim)
+          ).to.emit(bidProxyETH, "ETHRecovered");
+          let recoverFundsAddressAfterRecovery = await bidProxyETH.provider.getBalance(recoveredFundsAddress.address);
+          await expect(recoverFundsAddressAfterRecovery.toString()).to.equal(recoverFundsAddressBeforeRecovery.add(bidProxyBalanceAfterClaim).toString());
+        });
         it("The bidProxy admin should be able to forward the NFT to the winning bidder when the bidProxy wins the auction", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
           console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerETH[proxyBidder1Signer.address]} ETH`);
@@ -440,6 +497,63 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
           let currentOwner = await mockRWA.ownerOf(erc20AuctionNftId);
           await expect(currentOwner).to.equal(bidProxyERC20.address);
         });
+        it("Should allow the bidProxy contract to withdraw ERC20 token from the auction contract when a normal bidder wins", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerERC20[proxyBidder1Signer.address]} ERC20`);
+          let merkleProofAddress1 = await merkleTreeGenerateProof(loanPowerERC20, proxyBidder1Signer.address, loanPowerERC20[proxyBidder1Signer.address]);
+          console.log({merkleProofAddress1});
+          await expect(
+            bidProxyERC20.connect(proxyBidder1Signer).proxyBid(merkleProofAddress1, proxyBidder1Signer.address, loanPowerERC20[proxyBidder1Signer.address], minBidERC20)
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+          await mockPRO.connect(standardBidder1Signer).approve(propyAuctionV2ERC20.address, BigNumber(minBidERC20).plus(100).toString());
+          await expect(
+            propyAuctionV2ERC20.connect(standardBidder1Signer).bidToken(mockRWA.address, erc20AuctionNftId, auctionStartTime, BigNumber(minBidERC20).plus(100).toString())
+          ).to.emit(propyAuctionV2ERC20, "Bid");
+          await mockPRO.connect(standardBidder2Signer).approve(propyAuctionV2ERC20.address, BigNumber(increasedBidERC20).plus(100).toString());
+          await expect(
+            propyAuctionV2ERC20.connect(standardBidder2Signer).bidToken(mockRWA.address, erc20AuctionNftId, auctionStartTime, BigNumber(increasedBidERC20).plus(100).toString())
+          ).to.emit(propyAuctionV2ERC20, "Bid");
+          let merkleProofAddress2 = await merkleTreeGenerateProof(loanPowerERC20, proxyBidder2Signer.address, loanPowerERC20[proxyBidder2Signer.address]);
+          console.log({merkleProofAddress2});
+          await expect(
+            bidProxyERC20.connect(proxyBidder2Signer).proxyBid(merkleProofAddress2, proxyBidder2Signer.address, loanPowerERC20[proxyBidder2Signer.address], BigNumber(increasedBidERC20).plus(200).toString())
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+          await mockPRO.connect(standardBidder2Signer).approve(propyAuctionV2ERC20.address, BigNumber(increasedBidERC20).plus(300).toString());
+          await expect(
+            propyAuctionV2ERC20.connect(standardBidder2Signer).bidToken(mockRWA.address, erc20AuctionNftId, auctionStartTime, BigNumber(increasedBidERC20).plus(300).toString())
+          ).to.emit(propyAuctionV2ERC20, "Bid");
+          await time.setNextBlockTimestamp(auctionEndTime + 1);
+          // function finalize(
+          //   IERC721 _nft,
+          //   uint _nftId,
+          //   uint32 _start,
+          //   address _winner,
+          //   address[] memory _payoutAddresses,
+          //   uint256[] memory _payoutAddressValues
+          // ) external onlyRole(FINALIZE_ROLE) {
+          let winningBid = await propyAuctionV2ERC20.getBid(mockRWA.address, erc20AuctionNftId, auctionStartTime, standardBidder2Signer.address);
+          console.log({winningBid, 'BigNumber(increasedBidERC20).plus(200).toString()': BigNumber(increasedBidERC20).plus(200).toString()});
+          await expect(
+            propyAuctionV2ERC20.finalize(mockRWA.address, erc20AuctionNftId, auctionStartTime, standardBidder2Signer.address, [sellerSigner.address], [winningBid])
+          ).to.emit(propyAuctionV2ERC20, "Finalized");
+          let currentOwner = await mockRWA.ownerOf(erc20AuctionNftId);
+          await expect(currentOwner).to.equal(standardBidder2Signer.address);
+          // Ensure that BidProxy can withdraw funds from auction contract
+          let proxyBidAmount = await propyAuctionV2ERC20.getBid(mockRWA.address, erc20AuctionNftId, auctionStartTime, bidProxyERC20.address);
+          let bidProxyBalanceBeforeClaim = await mockPRO.balanceOf(bidProxyERC20.address);
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).claimAndWithdrawBidFromAuction()
+          ).to.emit(bidProxyERC20, "ERC20BidClaimedAndWithdrawnFromAuction");
+          let bidProxyBalanceAfterClaim = await mockPRO.balanceOf(bidProxyERC20.address);
+          await expect(bidProxyBalanceAfterClaim.toString()).to.equal(bidProxyBalanceBeforeClaim.add(proxyBidAmount).toString());
+          // Ensure that maintainer can recover the ETH from the bidProxy contract
+          let recoverFundsAddressBeforeRecovery = await mockPRO.balanceOf(recoveredFundsAddress.address);
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).recoverTokens(mockPRO.address, recoveredFundsAddress.address, bidProxyBalanceAfterClaim)
+          ).to.emit(bidProxyERC20, "TokensRecovered");
+          let recoverFundsAddressAfterRecovery = await mockPRO.balanceOf(recoveredFundsAddress.address);
+          await expect(recoverFundsAddressAfterRecovery.toString()).to.equal(recoverFundsAddressBeforeRecovery.add(bidProxyBalanceAfterClaim).toString());
+        });
         it("The bidProxy admin should be able to forward the NFT to the winning bidder when the bidProxy wins the auction", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
           console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerERC20[proxyBidder1Signer.address]} ERC20`);
@@ -483,337 +597,5 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
         });
       })
     })
-    // context("function setTokenURI", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW an address WITHOUT the APPROVER role to set the tokenURI", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).setTokenURI("1234")
-    //       ).to.be.revertedWith("NOT_APPROVER")
-    //     })
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the APPROVER role to set the tokenURI", async function () {
-    //       await propyKeyRepo.setTokenURI("1234")
-    //       expect(
-    //         await propyKeyRepo.tokenURI()
-    //       ).to.equal("1234");
-    //       await propyKeyRepo.setTokenURI("4321")
-    //       expect(
-    //         await propyKeyRepo.tokenURI()
-    //       ).to.equal("4321");
-    //     })
-    //   })
-    // });
-    // context("function setRepossessionConfig", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW an address WITHOUT the APPROVER role to set a repossession config", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).setRepossessionConfig(
-    //           1,
-    //           true,
-    //           1,
-    //           0
-    //         )
-    //       ).to.be.revertedWith("NOT_APPROVER")
-    //     });
-    //     it("Should NOT ALLOW a positive amountPropyOG if enabled is set to false", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         0
-    //       )
-    //       await expect(
-    //         propyKeyRepo.setRepossessionConfig(
-    //           1,
-    //           false,
-    //           1,
-    //           0
-    //         )
-    //       ).to.be.revertedWith("ZERO_OG_REQUIRED_ON_DISABLE")
-    //     })
-    //     it("Should NOT ALLOW a positive amountPRO if enabled is set to false", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         0,
-    //         1
-    //       )
-    //       await expect(
-    //         propyKeyRepo.setRepossessionConfig(
-    //           1,
-    //           false,
-    //           0,
-    //           1
-    //         )
-    //       ).to.be.revertedWith("ZERO_PRO_REQUIRED_ON_DISABLE")
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         false,
-    //         0,
-    //         0
-    //       )
-    //     })
-    //     it("Should NOT ALLOW a positive amountPRO if enabled is set to false", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         0,
-    //         1
-    //       )
-    //       await expect(
-    //         propyKeyRepo.setRepossessionConfig(
-    //           1,
-    //           false,
-    //           0,
-    //           1,
-    //         )
-    //       ).to.be.revertedWith("ZERO_PRO_REQUIRED_ON_DISABLE")
-    //     })
-    //     it("Should NOT ALLOW a NO CHANGE call", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         0,
-    //         1
-    //       )
-    //       await expect(
-    //         propyKeyRepo.setRepossessionConfig(
-    //           1,
-    //           true,
-    //           0,
-    //           1
-    //         )
-    //       ).to.be.revertedWith("NO_CHANGE")
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         0
-    //       )
-    //       await expect(
-    //         propyKeyRepo.setRepossessionConfig(
-    //           1,
-    //           true,
-    //           1,
-    //           0
-    //         )
-    //       ).to.be.revertedWith("NO_CHANGE")
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         1
-    //       )
-    //     })
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the APPROVER role to setRepossessionConfig", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         0
-    //       )
-    //     })
-    //   })
-    // })
-    // context("function sweepTokenByFullBalance", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW a sweep from a non-sweeper address", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).sweepTokenByFullBalance(
-    //           mockPRO.address,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NOT_SWEEPER")
-    //     });
-    //     it("Should NOT ALLOW a sweep on a _tokenAddress which has zero balance", async function () {
-    //       await expect(
-    //         propyKeyRepo.sweepTokenByFullBalance(
-    //           mockPRO.address,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NO_BALANCE")
-    //     });
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the SWEEPER role to sweepTokenByFullBalance", async function () {
-    //       await mockPRO.transfer(propyKeyRepo.address, ethers.utils.parseUnits("100", 8));
-    //       await expect(
-    //         propyKeyRepo.sweepTokenByFullBalance(
-    //           mockPRO.address,
-    //           deployerSigner.address
-    //         )
-    //       ).to.emit(propyKeyRepo, "TokenSwept");
-    //     })
-    //   })
-    // })
-    // context("function sweepETHByFullBalance", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW a sweep from a non-sweeper address", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).sweepETHByFullBalance(
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NOT_SWEEPER")
-    //     });
-    //     it("Should NOT ALLOW a sweep on ETH when balance is zero", async function () {
-    //       await expect(
-    //         propyKeyRepo.sweepETHByFullBalance(
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NO_BALANCE")
-    //     });
-    //     it("Should NOT ALLOW a sweep on ETH when the transfer fails", async function () {
-    //       const ForceEther = await ethers.getContractFactory("ForceEther");
-    //       let forceEther = await ForceEther.deploy({value: ethers.utils.parseEther("1")});
-    //       await forceEther.deployed();
-    //       await forceEther.forceTransfer(propyKeyRepo.address);
-    //       await expect(
-    //         propyKeyRepo.sweepETHByFullBalance(
-    //           mockPropyKeysERC721.address
-    //         )
-    //       ).to.be.revertedWith("ETH_TRANSFER_FAILED")
-    //     });
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the SWEEPER role to sweepETHByFullBalance", async function () {
-    //       const ForceEther = await ethers.getContractFactory("ForceEther");
-    //       let forceEther = await ForceEther.deploy({value: ethers.utils.parseEther("1")});
-    //       await forceEther.deployed();
-    //       await forceEther.forceTransfer(propyKeyRepo.address);
-    //       await expect(
-    //         propyKeyRepo.sweepETHByFullBalance(
-    //           deployerSigner.address
-    //         )
-    //       ).to.emit(propyKeyRepo, "ETHSwept");
-    //     })
-    //   })
-    // })
-    // context("function sweepOtherNFTById", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW a sweep from a non-sweeper address", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).sweepOtherNFTById(
-    //           mockRandomERC721.address,
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NOT_SWEEPER")
-    //     });
-    //     it("Should NOT ALLOW a sweep when balance is zero", async function () {
-    //       await mockRandomERC721.connect(deployerSigner).mint(deployerSigner.address, "ipfs://");
-    //       await expect(
-    //         propyKeyRepo.sweepOtherNFTById(
-    //           mockRandomERC721.address,
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("ERC721: caller is not token owner or approved")
-    //     });
-    //     it("Should NOT ALLOW a sweep if it is using the PropyKeys contract address", async function () {
-    //       await mockPropyKeysERC721.connect(propyKeyHolderSigner).transferFrom(propyKeyHolderSigner.address, propyKeyRepo.address, 1);
-    //       await expect(
-    //         propyKeyRepo.sweepOtherNFTById(
-    //           mockPropyKeysERC721.address,
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("use sweepPropyKeyById instead")
-    //     });
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the SWEEPER role to sweepOtherNFTById", async function () {
-    //       await mockRandomERC721.connect(deployerSigner).mint(deployerSigner.address, "ipfs://");
-    //       await mockRandomERC721.connect(deployerSigner).transferFrom(deployerSigner.address, propyKeyRepo.address, 1);
-    //       await expect(
-    //         propyKeyRepo.sweepOtherNFTById(
-    //           mockRandomERC721.address,
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.emit(propyKeyRepo, "OtherNFTSwept");
-    //     })
-    //   })
-    // })
-    // context("function setRepossessionConfig", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW an address WITHOUT the SWEEPER role to sweepPropyKeyById", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).sweepPropyKeyById(
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.be.revertedWith("NOT_SWEEPER")
-    //     });
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW an address WITH the SWEEPER role to sweepPropyKeyById", async function () {
-    //       await mockPropyKeysERC721.connect(propyKeyHolderSigner).transferFrom(propyKeyHolderSigner.address, propyKeyRepo.address, 1);
-    //       await expect(
-    //         propyKeyRepo.sweepPropyKeyById(
-    //           1,
-    //           deployerSigner.address
-    //         )
-    //       ).to.emit(propyKeyRepo, "PropyKeySwept");
-    //     })
-    //   })
-    // })
-    // context("function depositPropyKey", async function () {
-    //   context("Failure cases", async function () {
-    //     it("Should NOT ALLOW a depositPropyKey on a tokenId which isn't enabled for deposit", async function () {
-    //       await expect(
-    //         propyKeyRepo.connect(propyKeyHolderSigner).depositPropyKey(
-    //           1
-    //         )
-    //       ).to.be.revertedWith("DEPOSIT_NOT_ENABLED")
-    //     });
-    //     it("Should NOT ALLOW a depositPropyKey on a tokenId which is enabled for deposit but called by the non-owner of the tokenId", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         0
-    //       )
-    //       await expect(
-    //         propyKeyRepo.connect(randomAccountSigner).depositPropyKey(
-    //           1
-    //         )
-    //       ).to.be.revertedWith("ERC721: caller is not token owner or approved")
-    //     });
-    //   })
-    //   context("Success cases", async function () {
-    //     it("Should ALLOW a depositPropyKey on a tokenId which is enabled for deposit", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         0
-    //       )
-    //       await mockPropyKeysERC721.connect(propyKeyHolderSigner).approve(propyKeyRepo.address, 1);
-    //       await expect(
-    //         propyKeyRepo.connect(propyKeyHolderSigner).depositPropyKey(
-    //           1
-    //         )
-    //       ).to.emit(propyKeyRepo, "RepossessionComplete");
-    //     })
-    //     it("Should ALLOW a depositPropyKey on a tokenId which is enabled for deposit with a PRO reward", async function () {
-    //       await propyKeyRepo.setRepossessionConfig(
-    //         1,
-    //         true,
-    //         1,
-    //         1
-    //       );
-    //       await mockPRO.transfer(propyKeyRepo.address, ethers.utils.parseUnits("100", 8));
-    //       await mockPropyKeysERC721.connect(propyKeyHolderSigner).approve(propyKeyRepo.address, 1);
-    //       await expect(
-    //         propyKeyRepo.connect(propyKeyHolderSigner).depositPropyKey(
-    //           1
-    //         )
-    //       ).to.emit(propyKeyRepo, "RepossessionComplete");
-    //     })
-    //   })
-    // })
   })
 });

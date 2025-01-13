@@ -20,8 +20,8 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
   event NFTForwardedToWinner(address indexed nft, uint256 indexed nftId, address indexed winner);
   event TokensRecovered(address token, address to, uint value);
   event ETHRecovered(address to, uint value);
-  event ETHBidWithdrawnFromAuction(uint value);
-  event ERC20BidWithdrawnFromAuction(uint value);
+  event ETHBidClaimedAndWithdrawnFromAuction(uint value);
+  event ERC20BidClaimedAndWithdrawnFromAuction(uint value);
 
   struct AuctionConfig {
     IERC20 biddingTokenERC20;
@@ -144,19 +144,21 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     emit ETHRecovered(_destination, _amount);
   }
 
-  function withdrawBidFromAuction() external onlyMaintainer {
+  function claimAndWithdrawBidFromAuction() external onlyMaintainer {
     if(address(auctionConfig.biddingTokenERC20) != address(0)) {
       // ERC20 BIDDING
       IPropyAuctionV2ERC20 _auctionContract = IPropyAuctionV2ERC20(auctionConfig.destination);
+      _auctionContract.claim(auctionConfig.nft, auctionConfig.nftId, auctionConfig.start);
       uint256 _withdrawAmount = _auctionContract.unclaimed(address(this));
       _auctionContract.withdraw();
-      emit ERC20BidWithdrawnFromAuction(_withdrawAmount);
+      emit ERC20BidClaimedAndWithdrawnFromAuction(_withdrawAmount);
     } else {
       // ETH BIDDING
       IPropyAuctionV2 _auctionContract = IPropyAuctionV2(auctionConfig.destination);
+      _auctionContract.claim(auctionConfig.nft, auctionConfig.nftId, auctionConfig.start);
       uint256 _withdrawAmount = _auctionContract.unclaimed(address(this));
       _auctionContract.withdraw();
-      emit ETHBidWithdrawnFromAuction(_withdrawAmount);
+      emit ETHBidClaimedAndWithdrawnFromAuction(_withdrawAmount);
     }
   }
 
