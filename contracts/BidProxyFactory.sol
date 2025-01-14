@@ -28,6 +28,7 @@ interface IClonableMerkleProofMinimal {
 contract BidProxyFactory is Ownable {
 
   event NewBidProxy(address indexed auctionDestination, address indexed bidProxy, address indexed bidToken, bytes32 merkleRoot, address nft, uint nftId, uint32 start);
+  event NewMerkleRootClone(address indexed merkleRootClone, bytes32 merkleRoot);
 
   address public clonableAuctionBidProxyLoanReference;
   address public clonableMerkleProofMinimalReference;
@@ -75,6 +76,16 @@ contract BidProxyFactory is Ownable {
       _maintainerAddress
     );
     emit NewBidProxy(_auctionDestination, _newAuctionBidProxyLoanCloneAddress, _biddingTokenERC20Address, _merkleRoot, _nft, _nftId, _start);
+  }
+
+  function newMerkleProofClone(
+    bytes32 _merkleRoot
+  ) external onlyOwner {
+    // Deploy new merkle proof contract
+    address _newMerkleProofCloneAddress = Clones.clone(clonableMerkleProofMinimalReference);
+    IClonableMerkleProofMinimal _newMerkleProofClone = IClonableMerkleProofMinimal(_newMerkleProofCloneAddress);
+    _newMerkleProofClone.initialize(_merkleRoot);
+    emit NewMerkleRootClone(_newMerkleProofCloneAddress, _merkleRoot);
   }
 
 }

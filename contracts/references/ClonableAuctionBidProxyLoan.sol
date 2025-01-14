@@ -22,6 +22,8 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
   event ETHRecovered(address to, uint value);
   event ETHBidClaimedAndWithdrawnFromAuction(uint value);
   event ERC20BidClaimedAndWithdrawnFromAuction(uint value);
+  event UpdatedMerkleProofContract(address indexed merkleProofContract);
+  event UpdatedAuctionConfig(address indexed auctionDestination, address indexed bidToken, address indexed whitelistAddress, address nft, uint nftId, uint32 start);
 
   struct AuctionConfig {
     IERC20 biddingTokenERC20;
@@ -54,6 +56,7 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     require(initialized == false, "ALREADY_INITIALIZED");
     require(_merkleProofAddress != address(0), "INVALID_MERKLE_PROOF_ADDRESS");
     require(_whitelistAddress != address(0), "INVALID_WHITELIST_ADDRESS");
+    initialized = true;
     merkleProofContract = IClonableMerkleProofMinimal(_merkleProofAddress);
     whitelistContract = IWhitelist(_whitelistAddress);
     IERC20 _biddingToken = IERC20(_biddingTokenERC20Address);
@@ -72,7 +75,6 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     _grantRole(DEFAULT_ADMIN_ROLE, _adminAddress);
     _grantRole(MAINTAINER_ROLE, _adminAddress);
     _grantRole(MAINTAINER_ROLE, _maintainerAddress);
-    initialized = true;
   }
 
   function proxyBid(bytes32[] calldata _merkleProof, address _bidderAddress, uint256 _maxLoanAmount, uint256 _bidAmount) external {
@@ -160,6 +162,50 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
       _auctionContract.withdraw();
       emit ETHBidClaimedAndWithdrawnFromAuction(_withdrawAmount);
     }
+  }
+
+  function updateMerkleProofContract(address _merkleProofAddress) external onlyMaintainer {
+    require(_merkleProofAddress != address(0), "INVALID_MERKLE_PROOF_ADDRESS");
+    merkleProofContract = IClonableMerkleProofMinimal(_merkleProofAddress);
+    emit UpdatedMerkleProofContract(_merkleProofAddress);
+  }
+
+  function updateFullConfig(
+    address _merkleProofAddress,
+    address _whitelistAddress,
+    address _biddingTokenERC20Address,
+    address _auctionDestination,
+    address _nft,
+    uint256 _nftId,
+    uint32 _start
+  ) external onlyMaintainer {
+    require(auctionConfig.latestProxyBidder == address(0), "ALREADY_IN_PROGRESS");
+    require(_merkleProofAddress != address(0), "INVALID_MERKLE_PROOF_ADDRESS");
+    require(_whitelistAddress != address(0), "INVALID_WHITELIST_ADDRESS");
+    merkleProofContract = IClonableMerkleProofMinimal(_merkleProofAddress);
+    emit UpdatedMerkleProofContract(_merkleProofAddress);
+    whitelistContract = IWhitelist(_whitelistAddress);
+    IERC20 _biddingToken = IERC20(_biddingTokenERC20Address);
+    auctionConfig = AuctionConfig(
+      _biddingToken,
+      _auctionDestination,
+      IERC721(_nft),
+      _nftId,
+      _start,
+      address(0),
+      0
+    );
+    if(_biddingTokenERC20Address != address(0)) {
+      _biddingToken.approve(_auctionDestination, type(uint256).max);
+    }
+    emit UpdatedAuctionConfig(
+      _auctionDestination,
+      _biddingTokenERC20Address,
+      _whitelistAddress,
+      _nft,
+      _nftId,
+      _start
+    );
   }
 
   modifier onlyMaintainer() {

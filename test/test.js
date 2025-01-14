@@ -33,8 +33,10 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
 
   let minBidEth = ethers.utils.parseUnits("5", 18).toString();
   let increasedBid = ethers.utils.parseUnits("10", 18).toString();
+  let increasedBidBeyondInitialLimit = ethers.utils.parseUnits("100", 18).toString();
   let minBidERC20 = ethers.utils.parseUnits("5", 8).toString();
   let increasedBidERC20 = ethers.utils.parseUnits("10", 8).toString();
+  let increasedBidERC20BeyondInitialLimit = ethers.utils.parseUnits("100", 8).toString();
 
   let zeroAddress = "0x0000000000000000000000000000000000000000";
 
@@ -227,6 +229,76 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
             bidProxyETH.connect(proxyBidder1Signer).proxyBid(merkleProof, proxyBidder1Signer.address, loanPowerETH[proxyBidder1Signer.address], increasedBid)
           ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
         });
+        it("Should allow a whitelisted address to increase their existing bid on an auction after having their allowance increased via merkle (updateMerkleProofContract)", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerETH[proxyBidder1Signer.address]} ETH`);
+          let merkleProof = await merkleTreeGenerateProof(loanPowerETH, proxyBidder1Signer.address, loanPowerETH[proxyBidder1Signer.address]);
+          console.log({merkleProof});
+          await expect(
+            bidProxyETH.connect(proxyBidder1Signer).proxyBid(merkleProof, proxyBidder1Signer.address, loanPowerETH[proxyBidder1Signer.address], minBidEth)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          let merkleProofBidder2 = await merkleTreeGenerateProof(loanPowerETH, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address], increasedBid)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2, proxyBidder2Signer.address, loanPowerETH[proxyBidder2Signer.address], increasedBidBeyondInitialLimit)
+          ).to.be.revertedWith("INSUFFICIENT_LOAN_ALLOWANCE");
+          let increasedLoanPowerETH = {};
+          increasedLoanPowerETH[proxyBidder1Signer.address] = increasedBidBeyondInitialLimit;
+          increasedLoanPowerETH[proxyBidder2Signer.address] = increasedBidBeyondInitialLimit;
+          increasedLoanPowerETH[bidder3SignerNoWhitelist.address] = increasedBidBeyondInitialLimit;
+          let increasedMerkleRootETH = await merkleTreeGenerator(increasedLoanPowerETH);
+          let txNewMerkleProofClone = await bidProxyFactory.newMerkleProofClone(increasedMerkleRootETH);
+          let	txWithNewEventResponse = await txNewMerkleProofClone.wait();
+          let event = txWithNewEventResponse.events.find((item) => item.event === 'NewMerkleRootClone');
+          let newMerkleProofCloneAddress = event?.args?.merkleRootClone;
+          await expect(
+            bidProxyETH.connect(maintainerSigner).updateMerkleProofContract(newMerkleProofCloneAddress)
+          ).to.emit(bidProxyETH, "UpdatedMerkleProofContract");
+          let merkleProofBidder2IncreasedBid = await merkleTreeGenerateProof(increasedLoanPowerETH, proxyBidder2Signer.address, increasedLoanPowerETH[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2IncreasedBid, proxyBidder2Signer.address, increasedLoanPowerETH[proxyBidder2Signer.address], increasedBidBeyondInitialLimit)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+        });
+        it("Should allow a whitelisted address to increase their existing bid on an auction after having their allowance increased via merkle (updateFullConfig)", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          let increasedLoanPowerETH = {};
+          increasedLoanPowerETH[proxyBidder1Signer.address] = increasedBidBeyondInitialLimit;
+          increasedLoanPowerETH[proxyBidder2Signer.address] = increasedBidBeyondInitialLimit;
+          increasedLoanPowerETH[bidder3SignerNoWhitelist.address] = increasedBidBeyondInitialLimit;
+          let increasedMerkleRootETH = await merkleTreeGenerator(increasedLoanPowerETH);
+          let txNewMerkleProofClone = await bidProxyFactory.newMerkleProofClone(increasedMerkleRootETH);
+          let	txWithNewEventResponse = await txNewMerkleProofClone.wait();
+          let event = txWithNewEventResponse.events.find((item) => item.event === 'NewMerkleRootClone');
+          let newMerkleProofCloneAddress = event?.args?.merkleRootClone;
+          let merkleProofBidder2IncreasedBid = await merkleTreeGenerateProof(increasedLoanPowerETH, proxyBidder2Signer.address, increasedLoanPowerETH[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyETH.connect(maintainerSigner).updateFullConfig(
+              newMerkleProofCloneAddress,
+              mockWhitelist.address,
+              zeroAddress,
+              propyAuctionV2.address,
+              mockRWA.address,
+              ethAuctionNftId,
+              auctionStartTime,
+            )
+          ).to.emit(bidProxyETH, "UpdatedAuctionConfig");
+          await expect(
+            bidProxyETH.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2IncreasedBid, proxyBidder2Signer.address, increasedLoanPowerETH[proxyBidder2Signer.address], increasedBidBeyondInitialLimit)
+          ).to.emit(bidProxyETH, "SuccessfulProxyBidETH");
+          await expect(
+            bidProxyETH.connect(maintainerSigner).updateFullConfig(
+              newMerkleProofCloneAddress,
+              mockWhitelist.address,
+              zeroAddress,
+              propyAuctionV2ERC20.address,
+              mockRWA.address,
+              erc20AuctionNftId,
+              auctionStartTime,
+            )
+          ).to.be.revertedWith("ALREADY_IN_PROGRESS")
+        });
         it("Should allow ANOTHER whitelisted address to increase the bid when there is already an existing bid on an auction from a different whitelisted address", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
           console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerETH[proxyBidder1Signer.address]} ETH`);
@@ -410,6 +482,75 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
           await expect(
             bidProxyERC20.connect(proxyBidder1Signer).proxyBid(merkleProof, proxyBidder1Signer.address, loanPowerERC20[proxyBidder1Signer.address], minBidERC20)
           ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+        });
+        it("Should allow a whitelisted address to increase their existing bid on an auction after having their allowance increased via merkle", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerERC20[proxyBidder1Signer.address]} ERC20`);
+          let merkleProof = await merkleTreeGenerateProof(loanPowerERC20, proxyBidder1Signer.address, loanPowerERC20[proxyBidder1Signer.address]);
+          await expect(
+            bidProxyERC20.connect(proxyBidder1Signer).proxyBid(merkleProof, proxyBidder1Signer.address, loanPowerERC20[proxyBidder1Signer.address], minBidERC20)
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+          let merkleProofBidder2 = await merkleTreeGenerateProof(loanPowerERC20, proxyBidder2Signer.address, loanPowerERC20[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyERC20.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2, proxyBidder2Signer.address, loanPowerERC20[proxyBidder2Signer.address], increasedBidERC20)
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+          await expect(
+            bidProxyERC20.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2, proxyBidder2Signer.address, loanPowerERC20[proxyBidder2Signer.address], increasedBidERC20BeyondInitialLimit)
+          ).to.be.revertedWith("INSUFFICIENT_LOAN_ALLOWANCE");
+          let increasedLoanPowerERC20 = {};
+          increasedLoanPowerERC20[proxyBidder1Signer.address] = increasedBidERC20BeyondInitialLimit;
+          increasedLoanPowerERC20[proxyBidder2Signer.address] = increasedBidERC20BeyondInitialLimit;
+          increasedLoanPowerERC20[bidder3SignerNoWhitelist.address] = increasedBidERC20BeyondInitialLimit;
+          let increasedMerkleRootERC20 = await merkleTreeGenerator(increasedLoanPowerERC20);
+          let txNewMerkleProofClone = await bidProxyFactory.newMerkleProofClone(increasedMerkleRootERC20);
+          let	txWithNewEventResponse = await txNewMerkleProofClone.wait();
+          let event = txWithNewEventResponse.events.find((item) => item.event === 'NewMerkleRootClone');
+          let newMerkleProofCloneAddress = event?.args?.merkleRootClone;
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).updateMerkleProofContract(newMerkleProofCloneAddress)
+          ).to.emit(bidProxyERC20, "UpdatedMerkleProofContract");
+          let merkleProofBidder2IncreasedBid = await merkleTreeGenerateProof(increasedLoanPowerERC20, proxyBidder2Signer.address, increasedLoanPowerERC20[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyERC20.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2IncreasedBid, proxyBidder2Signer.address, increasedLoanPowerERC20[proxyBidder2Signer.address], increasedBidERC20BeyondInitialLimit)
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+        });
+        it("Should allow a whitelisted address to increase their existing bid on an auction after having their allowance increased via merkle (updateFullConfig)", async function () {
+          await time.setNextBlockTimestamp(auctionStartTime + 1);
+          let increasedLoanPowerERC20 = {};
+          increasedLoanPowerERC20[proxyBidder1Signer.address] = increasedBidERC20BeyondInitialLimit;
+          increasedLoanPowerERC20[proxyBidder2Signer.address] = increasedBidERC20BeyondInitialLimit;
+          increasedLoanPowerERC20[bidder3SignerNoWhitelist.address] = increasedBidERC20BeyondInitialLimit;
+          let increasedMerkleRootERC20 = await merkleTreeGenerator(increasedLoanPowerERC20);
+          let txNewMerkleProofClone = await bidProxyFactory.newMerkleProofClone(increasedMerkleRootERC20);
+          let	txWithNewEventResponse = await txNewMerkleProofClone.wait();
+          let event = txWithNewEventResponse.events.find((item) => item.event === 'NewMerkleRootClone');
+          let newMerkleProofCloneAddress = event?.args?.merkleRootClone;
+          let merkleProofBidder2IncreasedBid = await merkleTreeGenerateProof(increasedLoanPowerERC20, proxyBidder2Signer.address, increasedLoanPowerERC20[proxyBidder2Signer.address]);
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).updateFullConfig(
+              newMerkleProofCloneAddress,
+              mockWhitelist.address,
+              mockPRO.address,
+              propyAuctionV2ERC20.address,
+              mockRWA.address,
+              erc20AuctionNftId,
+              auctionStartTime,
+            )
+          ).to.emit(bidProxyERC20, "UpdatedAuctionConfig");
+          await expect(
+            bidProxyERC20.connect(proxyBidder2Signer).proxyBid(merkleProofBidder2IncreasedBid, proxyBidder2Signer.address, increasedLoanPowerERC20[proxyBidder2Signer.address], increasedBidERC20BeyondInitialLimit)
+          ).to.emit(bidProxyERC20, "SuccessfulProxyBidERC20");
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).updateFullConfig(
+              newMerkleProofCloneAddress,
+              mockWhitelist.address,
+              mockPRO.address,
+              propyAuctionV2ERC20.address,
+              mockRWA.address,
+              erc20AuctionNftId,
+              auctionStartTime,
+            )
+          ).to.be.revertedWith("ALREADY_IN_PROGRESS")
         });
         it("Should allow a whitelisted address to increase their existing bid on an auction", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
