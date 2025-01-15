@@ -43,7 +43,7 @@ If a user is bidding via `ClonableAuctionBidProxyLoan`, the value of their bid r
 
 ## Deployments
 
-Sepolia BidProxyFactory: [`0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3`](https://sepolia.basescan.org/address/0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3) (ownership assigned to `0x3426803C91c2e7892eB345Ac4769966196CD100B`)
+Sepolia BidProxyFactory: [`0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3`](https://sepolia.etherscan.io/address/0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3) (ownership assigned to `0x3426803C91c2e7892eB345Ac4769966196CD100B`)
 
 ## ABI
 
