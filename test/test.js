@@ -12,7 +12,7 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
   const ADMIN_ROLE = "0xa49807205ce4d355092ef5a8a18f56e8913cf4a201fbe287825b095693c21775";
   const MAINTAINER_ROLE = "0x339759585899103d2ace64958e37e18ccb0504652c81d4a1b8aa80fe2126ab95";
 
-  let clonableAuctionBidProxyLoanReference, clonableMerkleProofMinimalReference, mockWhitelist, mockRWA, mockPRO, propyAuctionV2, propyAuctionV2ERC20;
+  let clonableAuctionBidProxyLoanReference, clonableMerkleProofMinimalReference, mockWhitelist, mockRWA, mockOtherNFT, mockPRO, propyAuctionV2, propyAuctionV2ERC20;
 
   let deployerSigner, sellerSigner, adminSigner, maintainerSigner, standardBidder1Signer, standardBidder2Signer, proxyBidder1Signer, proxyBidder2Signer, bidder3SignerNoWhitelist, recoveredFundsAddress;
 
@@ -24,6 +24,8 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
 
   let ethAuctionNftId = 1;
   let erc20AuctionNftId = 2;
+  let ethAuctionOtherNftId = 3;
+  let erc20AuctionOtherNftId = 4;
 
   let auctionStartTime = Math.floor(new Date().getTime() / 1000) + (60 * 2);
   let auctionEndTime = Math.floor(new Date().getTime() / 1000) + (60 * 10);
@@ -90,6 +92,15 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
     await mockRWA.deployed();
     await mockRWA.connect(deployerSigner).grantRole(MINTER_ROLE, deployerSigner.address);
     console.log({'mockRWA deployed to': mockRWA.address});
+    mockOtherNFT = await MockERC721.deploy(
+      deployerSigner.address,
+      "MockNFT",
+      "mNFT",
+      ""
+    );
+    await mockOtherNFT.deployed();
+    await mockOtherNFT.connect(deployerSigner).grantRole(MINTER_ROLE, deployerSigner.address);
+    console.log({'mockOtherNFT deployed to': mockOtherNFT.address});
 
     // Deploy mock version of PRO tokens
     const MockPRO = await ethers.getContractFactory("MockPRO");
@@ -201,6 +212,12 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
     await mockPRO.transfer(standardBidder1Signer.address, ethers.utils.parseUnits("1000", 8));
     await mockPRO.transfer(standardBidder2Signer.address, ethers.utils.parseUnits("1000", 8));
 
+    // add random nft to test recovery function
+    await mockOtherNFT.mint(newEthBidProxyAddress, "ipfs://");
+    await mockOtherNFT.mint(newEthBidProxyAddress, "ipfs://");
+    await mockOtherNFT.mint(newEthBidProxyAddress, "ipfs://");
+    await mockOtherNFT.mint(newERC20BidProxyAddress, "ipfs://");
+
     // Whitelist all required addresses
     await mockWhitelist.batchAddToWhitelist([bidProxyERC20.address, bidProxyETH.address, standardBidder1Signer.address, standardBidder2Signer.address, proxyBidder1Signer.address, proxyBidder2Signer.address]);
 
@@ -208,6 +225,29 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
   context("state-modifying functions", async function () {
     context("function proxyBid for ETH auctions", async function () {
       context("Success cases", async function () {
+        it("Should allow a maintainer address to recover an arbitrary NFT from the contract", async function () {
+          expect(
+            await mockOtherNFT.ownerOf(ethAuctionOtherNftId)
+          ).to.equal(bidProxyETH.address);
+          // recoverERC721(IERC721 _token, uint _tokenId, address _destination, bool _safeTransfer)
+          await expect(
+            bidProxyETH.connect(maintainerSigner).recoverERC721(mockOtherNFT.address, ethAuctionOtherNftId, maintainerSigner.address, true)
+          ).to.emit(bidProxyETH, "ERC721Recovered");
+          expect(
+            await mockOtherNFT.ownerOf(ethAuctionOtherNftId)
+          ).to.equal(maintainerSigner.address);
+          console.log({mockOtherNFT})
+          await mockOtherNFT.connect(maintainerSigner)['safeTransferFrom(address,address,uint256)'](maintainerSigner.address, bidProxyETH.address, ethAuctionOtherNftId);
+          expect(
+            await mockOtherNFT.ownerOf(ethAuctionOtherNftId)
+          ).to.equal(bidProxyETH.address);
+          await expect(
+            bidProxyETH.connect(maintainerSigner).recoverERC721(mockOtherNFT.address, ethAuctionOtherNftId, maintainerSigner.address, false)
+          ).to.emit(bidProxyETH, "ERC721Recovered");
+          expect(
+            await mockOtherNFT.ownerOf(ethAuctionOtherNftId)
+          ).to.equal(maintainerSigner.address);
+        });
         it("Should allow a whitelisted address to bid on an auction", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
           console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerETH[proxyBidder1Signer.address]} ETH`);
@@ -474,6 +514,27 @@ describe("BidProxyFactory & ClonableAuctionBidProxyLoan", function () {
     })
     context("function proxyBid for ERC20 auctions", async function () {
       context("Success cases", async function () {
+        it("Should allow a maintainer address to recover an arbitrary NFT from the contract", async function () {
+          expect(
+            await mockOtherNFT.ownerOf(erc20AuctionOtherNftId)
+          ).to.equal(bidProxyERC20.address);
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).recoverERC721(mockOtherNFT.address, erc20AuctionOtherNftId, maintainerSigner.address, true)
+          ).to.emit(bidProxyERC20, "ERC721Recovered");
+          expect(
+            await mockOtherNFT.ownerOf(erc20AuctionOtherNftId)
+          ).to.equal(maintainerSigner.address);
+          await mockOtherNFT.connect(maintainerSigner)['safeTransferFrom(address,address,uint256)'](maintainerSigner.address, bidProxyERC20.address, erc20AuctionOtherNftId);
+          expect(
+            await mockOtherNFT.ownerOf(erc20AuctionOtherNftId)
+          ).to.equal(bidProxyERC20.address);
+          await expect(
+            bidProxyERC20.connect(maintainerSigner).recoverERC721(mockOtherNFT.address, erc20AuctionOtherNftId, maintainerSigner.address, false)
+          ).to.emit(bidProxyERC20, "ERC721Recovered");
+          expect(
+            await mockOtherNFT.ownerOf(erc20AuctionOtherNftId)
+          ).to.equal(maintainerSigner.address);
+        });
         it("Should allow a whitelisted address to bid on an auction", async function () {
           await time.setNextBlockTimestamp(auctionStartTime + 1);
           console.log(`Generating merkle proof for ${proxyBidder1Signer.address} to bid with up to ${loanPowerERC20[proxyBidder1Signer.address]} ERC20`);

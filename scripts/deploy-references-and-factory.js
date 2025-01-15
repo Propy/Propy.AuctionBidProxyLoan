@@ -21,6 +21,7 @@ const etherscanChainIds = [
 
 const networkNameToWhitelistAddress = {
   "sepolia": "0xB7b0504C043533d0dbcB952AC3f9c4450e10d5a0",
+  "mainnet": "0xBE2779646C64e0f7111F4Dd32f3a6940B4717629",
 }
 
 async function main() {
@@ -39,15 +40,17 @@ async function main() {
   let whitelistContractAddress;
   if(hre.network.name === "mainnet") {
     // adminAddress = deployerSigner.address;
+    adminAddress = "0x28C280f7eAB602F00aC329E6091e5713A599b3f6";
+    maintainerAddress = "0x28C280f7eAB602F00aC329E6091e5713A599b3f6";
   } else if(hre.network.name === "base") {
     // adminAddress = deployerSigner.address;
   } else if (["goerli", "sepolia", "hardhat", "baseSepolia"].indexOf(hre.network.name) > -1) {
     // testnet config
-    adminAddress = deployerSigner.address;
-    maintainerAddress = deployerSigner.address;
-    if(networkNameToWhitelistAddress[hre.network.name]) {
-      whitelistContractAddress = networkNameToWhitelistAddress[hre.network.name];
-    }
+    adminAddress = "0x3426803C91c2e7892eB345Ac4769966196CD100B";
+    maintainerAddress = "0x3426803C91c2e7892eB345Ac4769966196CD100B";
+  }
+  if(networkNameToWhitelistAddress[hre.network.name]) {
+    whitelistContractAddress = networkNameToWhitelistAddress[hre.network.name];
   }
 
   if(adminAddress && maintainerAddress && whitelistContractAddress) {
@@ -71,6 +74,10 @@ async function main() {
     console.log("ClonableAuctionBidProxyLoan contract deployed to:", clonableAuctionBidProxyLoan.address);
     console.log("ClonableMerkleProofMinimal contract deployed to:", clonableMerkleProofMinimal.address);
     console.log("BidProxyFactory contract deployed to:", bidProxyFactory.address);
+
+    // transfer ownership of factory to adminAddress
+    await bidProxyFactory.transferOwnership(adminAddress);
+    console.log("BidProxyFactory ownership transferred to:", adminAddress);
 
     // We run verification on Etherscan
     // If there is an official Etherscan instance of this network we are deploying to

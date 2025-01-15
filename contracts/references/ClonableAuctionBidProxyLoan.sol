@@ -19,6 +19,7 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
   event SuccessfulProxyBidERC20(address indexed proxyBidder, address indexed biddingToken, uint256 totalBidAmount, uint256 additionalFundsAdded);
   event NFTForwardedToWinner(address indexed nft, uint256 indexed nftId, address indexed winner);
   event TokensRecovered(address token, address to, uint value);
+  event ERC721Recovered(address token, uint tokenId, address to, bool safeTransfer);
   event ETHRecovered(address to, uint value);
   event ETHBidClaimedAndWithdrawnFromAuction(uint value);
   event ERC20BidClaimedAndWithdrawnFromAuction(uint value);
@@ -137,6 +138,16 @@ contract ClonableAuctionBidProxyLoan is IERC721Receiver, AccessControlUpgradeabl
     require(_destination != address(0), 'NO_ZERO_ADDRESS');
     _token.transfer(_destination, _amount);
     emit TokensRecovered(address(_token), _destination, _amount);
+  }
+
+  function recoverERC721(IERC721 _token, uint _tokenId, address _destination, bool _safeTransfer) external onlyMaintainer nonReentrant {
+    require(_destination != address(0), 'NO_ZERO_ADDRESS');
+    if(_safeTransfer) {
+      _token.safeTransferFrom(address(this), _destination, _tokenId);
+    } else {
+      _token.transferFrom(address(this), _destination, _tokenId);
+    }
+    emit ERC721Recovered(address(_token), _tokenId, _destination, _safeTransfer);
   }
 
   function recoverETH(address _destination, uint _amount) external onlyMaintainer nonReentrant {
