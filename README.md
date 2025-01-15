@@ -27,15 +27,19 @@ Standard users make bids via the auction contract directly, users who want to le
 
 At the end of the auction, if a lender won the auction, the proxy contract wins the auction from the perspective of Propy’s auction contract. The NFT then arrives in the proxy contract and the `forwardNftToWinner` function can be used to forward the NFT to the proxy bidder who won the auction.
 
-## Commands
+# VERY IMPORTANT NOTE
 
-### Generate Merkle Root (merkleGen)
+One key difference between placing a bid via the `ClonableAuctionBidProxyLoan.sol` contracts compared to placing a bid via the standard `PropyAuctionV2`:
 
-This repo includes a Hardhat task to generate a Merkle Root for a provided set of loan allowance data:
+The `bid` function on `PropyAuctionV2` assumes that the provided bid amount (`msg.value` for ETH auctions and `_amount` on ERC20 auctions) is set to **the amount by which a user wants to increase their bid**, this means that if a user already has bid e.g. 10 ETH and wants to increase their bid to 25 ETH, they place a 15 ETH bid which will increase their existing bid of 10 ETH by 15 ETH -> 25 ETH
 
-`npx hardhat merkleGen --merkle-data example-eth-values.json`
+The `proxyBid` function on `ClonableAuctionBidProxyLoan.sol` takes a `_bidAmount` which is set to **the total bid amount that we want the user to arrive at**,  this means that if a user already has bid e.g. 10 ETH and wants to increase their bid to 25 ETH, they place a 25 ETH bid which will increase their existing bid of 10 ETH by 15 ETH -> 25 ETH
 
-Replace `example-eth-values.json` with the name of the file in the `merkle-data` folder that you wish to generate the Merkle Root for
+In other words: 
+
+If a user is bidding via `PropyAuctionV2`, the value of their bid represents only the amount they want to increase their bid by.
+
+If a user is bidding via `ClonableAuctionBidProxyLoan`, the value of their bid represents the full amount that they want their bid to be.
 
 ## Deployments
 
@@ -201,6 +205,14 @@ interface IClonableAuctionBidProxyLoan is IERC721Receiver, IAccessControlUpgrade
 ```
 
 ## Commands
+
+### Generate Merkle Root (merkleGen)
+
+This repo includes a Hardhat task to generate a Merkle Root for a provided set of approved loan amounts for addresses:
+
+`npx hardhat merkleGen --merkle-data example.json`
+
+Replace `example.json` with the name of the file in the `merkle-data` folder that you wish to generate the Merkle Root for
 
 ### Installation
 
