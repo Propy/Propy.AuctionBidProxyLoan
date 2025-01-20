@@ -41,6 +41,13 @@ If a user is bidding via `PropyAuctionV2`, the value of their bid represents onl
 
 If a user is bidding via `ClonableAuctionBidProxyLoan`, the value of their bid represents the full amount that they want their bid to be.
 
+## Updating allowances on an existing clone
+
+In order to update the allowances on an existing clone of `ClonableAuctionBidProxyLoan.sol`:
+
+1. Use the `newMerkleProofClone` function on `BidProxyFactory` to deploy a new Merkle Proof clone, pull the `merkleRootClone` argument from the `NewMerkleRootClone` event to get the contract address of the new Merkle Proof clone which is emitted when calling the `newMerkleProofClone` function
+2. Use the `updateMerkleProofContract` function on the deployed clone of the `ClonableAuctionBidProxyLoan.sol` contract, passing it the new `merkleRootClone` address that was taken from the `NewMerkleRootClone` event in step 1.
+
 ## Deployments
 
 Sepolia BidProxyFactory: [`0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3`](https://sepolia.etherscan.io/address/0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3) (ownership assigned to `0x3426803C91c2e7892eB345Ac4769966196CD100B`)
