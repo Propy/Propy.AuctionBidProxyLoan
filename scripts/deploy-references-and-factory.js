@@ -92,7 +92,7 @@ async function main() {
       // We can now run Etherscan verification of our contracts
       try {
         await hre.run('verify:verify', {
-          address: clonableMerkleProofMinimal.address,
+          address: clonableAuctionBidProxyLoan.address,
           constructorArguments: []
         });
       } catch (err) {
