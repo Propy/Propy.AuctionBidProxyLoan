@@ -96,6 +96,13 @@ interface IBidProxyFactory is Ownable {
     bytes32 _merkleRoot
   ) external;
 
+  // If we want to update the config of this factory
+  function adjustFactoryConfig(
+    address _clonableAuctionBidProxyLoanReference,
+    address _clonableMerkleProofMinimalReference,
+    address _whitelist
+  ) external;
+
   // Emitted when the factory creates a new clone of ClonableAuctionBidProxyLoan.sol & ClonableMerkleProofMinimal.sol
   event NewBidProxy(
     address indexed auctionDestination,
