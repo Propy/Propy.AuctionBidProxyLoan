@@ -108,6 +108,29 @@
     "type": "event"
   },
   {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_clonableAuctionBidProxyLoanReference",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_clonableMerkleProofMinimalReference",
+        "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "_whitelist",
+        "type": "address"
+      }
+    ],
+    "name": "adjustFactoryConfig",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
     "inputs": [],
     "name": "clonableAuctionBidProxyLoanReference",
     "outputs": [

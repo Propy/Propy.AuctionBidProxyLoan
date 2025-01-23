@@ -89,4 +89,17 @@ contract BidProxyFactory is Ownable {
     emit NewMerkleRootClone(_newMerkleProofCloneAddress, _merkleRoot);
   }
 
+  function adjustFactoryConfig(
+    address _clonableAuctionBidProxyLoanReference,
+    address _clonableMerkleProofMinimalReference,
+    address _whitelist
+  ) external onlyOwner {
+    require(_clonableAuctionBidProxyLoanReference != address(0), "INVALID_BID_PROXY_REF");
+    require(_clonableMerkleProofMinimalReference != address(0), "INVALID_MERKLE_PROOF_REF");
+    require(_whitelist != address(0), "INVALID_WHITELIST");
+    clonableAuctionBidProxyLoanReference = _clonableAuctionBidProxyLoanReference;
+    clonableMerkleProofMinimalReference = _clonableMerkleProofMinimalReference;
+    whitelist = _whitelist;
+  }
+
 }

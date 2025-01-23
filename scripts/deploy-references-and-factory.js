@@ -20,7 +20,8 @@ const etherscanChainIds = [
 ]
 
 const networkNameToWhitelistAddress = {
-  "sepolia": "0xB7b0504C043533d0dbcB952AC3f9c4450e10d5a0",
+  // "sepolia": "0xB7b0504C043533d0dbcB952AC3f9c4450e10d5a0",
+  "sepolia": "0xb1037F178C408B23A64A397D7EaB14498ed65CA1",
   "mainnet": "0xBE2779646C64e0f7111F4Dd32f3a6940B4717629",
 }
 

@@ -50,7 +50,7 @@ In order to update the allowances on an existing clone of `ClonableAuctionBidPro
 
 ## Deployments
 
-Sepolia BidProxyFactory: [`0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3`](https://sepolia.etherscan.io/address/0xbd05F7E2cc19cC3866aDd1722A9a47Fbcc63F8c3) (ownership assigned to `0x3426803C91c2e7892eB345Ac4769966196CD100B`)
+Sepolia BidProxyFactory: [`0x1375cD97504D8B952486eEC27C7d9531CD79F66e`](https://sepolia.etherscan.io/address/0x1375cD97504D8B952486eEC27C7d9531CD79F66e) (ownership assigned to `0x3426803C91c2e7892eB345Ac4769966196CD100B`)
 
 ## ABI
 
