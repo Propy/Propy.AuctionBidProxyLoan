@@ -123,7 +123,7 @@ interface IBidProxyFactory is Ownable {
 }
 ```
 
-## Overview/interface of ClonableMerkleProofMinimal.sol
+## Overview/interface of ClonableAuctionBidProxyLoan.sol
 
 ```solidity
 interface IClonableAuctionBidProxyLoan is IERC721Receiver, IAccessControlUpgradeable, IReentrancyGuardUpgradeable {
